@@ -14,12 +14,33 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 app.post('/memory', async (req, res) => {
 
   try {
+
     // Accept either 'prompt' or 'query' as the input field (for Custom GPT compatibility)
     // This allows GPTs that send 'query' instead of 'prompt' to work
     const prompt: string = req.body.prompt || req.body.query;
     // Fallback to 400 error if neither is present
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({ error: 'Missing or invalid prompt/query' });
+    }
+
+    // Fallback for 'date': if missing or empty, default to today's date (YYYY-MM-DD) in server's timezone
+    let date: string = req.body.date;
+    if (!date) {
+      // Use server's current date in YYYY-MM-DD format
+      const now = new Date();
+      // Pad month and day for two digits
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      date = `${yyyy}-${mm}-${dd}`;
+      // Inline comment: fallback to today's date if 'date' is missing
+    }
+
+    // Fallback for 'timezone': if missing, default to 'Australia/Melbourne'
+    let timezone: string = req.body.timezone;
+    if (!timezone) {
+      timezone = 'Australia/Melbourne';
+      // Inline comment: fallback to 'Australia/Melbourne' if 'timezone' is missing
     }
 
 
