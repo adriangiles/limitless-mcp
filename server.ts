@@ -65,6 +65,7 @@ app.post('/memory', async (req, res) => {
       console.log('Sample lifelog(s):', lifelogs.slice(0, 2));
     }
 
+
     // 3. Print the number of logs and the summary input text
     const userPrompt =
       `Here are some lifelog entries:\n\n${lifelogs
@@ -75,8 +76,12 @@ app.post('/memory', async (req, res) => {
         .join('\n---\n')}\n\nUser question: ${prompt}\n\nSummarize the relevant information in a clear, conversational way.`;
     console.log('Summary input text for OpenAI:', userPrompt);
 
-    // 4. Return the summary input text directly to confirm data flow
-    return res.json({ result: userPrompt });
+    // Define a good default system prompt for OpenAI summarisation
+    const systemPrompt =
+      'You are a helpful memory assistant. Given a set of lifelog entries and a user question, provide a clear, concise, and conversational summary of the most relevant information.';
+
+    // 4. Return the summary input text directly to confirm data flow (TEMPORARY: comment out to enable OpenAI call)
+    // return res.json({ result: userPrompt });
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
