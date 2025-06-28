@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
 import bodyParser from 'body-parser';
 import db from './db';
 import OpenAI from 'openai';
@@ -92,7 +92,7 @@ console.log("Using Limitless API Key:", process.env.LIMITLESS_API_KEY?.slice(0, 
 
 
 
-app.post('/search', async (req: Request, res: Response): Promise<void> => {
+app.post('/search', async (req, res) => {
   try {
     const { query, date, timezone, limit = 50 } = req.body;
 
