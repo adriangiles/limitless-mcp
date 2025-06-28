@@ -29,17 +29,25 @@ app.post('/memory', async (req, res) => {
       return res.status(400).json({ error: 'Missing or invalid prompt/query' });
     }
 
+
     // Fallback for 'date': if missing or empty, default to today's date (YYYY-MM-DD) in server's timezone
+    // If a natural language date is provided (e.g. 'last week'), convert it to ISO format
     let date: string = req.body.date;
+    const moment = require('moment-timezone');
     if (!date) {
       // Use server's current date in YYYY-MM-DD format
-      const now = new Date();
-      // Pad month and day for two digits
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      date = `${yyyy}-${mm}-${dd}`;
-      // Inline comment: fallback to today's date if 'date' is missing
+      date = moment().tz(req.body.timezone || 'Australia/Melbourne').format('YYYY-MM-DD');
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      // If not already in YYYY-MM-DD, try to parse common phrases
+      if (date.toLowerCase() === 'last week') {
+        // Set to last week's Monday
+        date = moment().tz(req.body.timezone || 'Australia/Melbourne').subtract(1, 'week').startOf('isoWeek').format('YYYY-MM-DD');
+      } else if (date.toLowerCase() === 'yesterday') {
+        date = moment().tz(req.body.timezone || 'Australia/Melbourne').subtract(1, 'day').format('YYYY-MM-DD');
+      } else {
+        // fallback: use today's date
+        date = moment().tz(req.body.timezone || 'Australia/Melbourne').format('YYYY-MM-DD');
+      }
     }
 
     // Fallback for 'timezone': if missing, default to 'Australia/Melbourne'
