@@ -18,7 +18,8 @@
     "express": "^5.1.0",
     "fuse.js": "^7.1.0",
     "moment-timezone": "^0.5.45",
-    "openai": "^4.104.0"
+    "openai": "^4.104.0",
+    "@types/jest": "^30.0.0"
   },
   "devDependencies": {
     "@types/body-parser": "^1.19.6",
