@@ -12,6 +12,9 @@
     "postinstall": "npm install --no-save @types/jest",
     "sync-lifelogs": "ts-node sync_lifelogs.ts"
   },
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
     "@types/jest": "^30.0.0",
     "axios": "^1.6.7",
