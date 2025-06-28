@@ -3,7 +3,7 @@
 
 import Fuse from 'fuse.js';
 import express, { Request, Response } from 'express';
-import dotenv from 'dotenv';
+// import dotenv from 'dotenv';
 import bodyParser from 'body-parser';
 import { getLifelogs } from './_client';
 import * as chrono from 'chrono-node';
@@ -24,11 +24,19 @@ function parseDateInput(dateInput?: string): string | undefined {
 import OpenAI from 'openai';
 
 
-dotenv.config();
+// dotenv.config();
 const app = express();
 app.use(bodyParser.json());
 
 const PORT = process.env.PORT || 3000;
+
+// Warn if required environment variables are missing
+if (!process.env.LIMITLESS_API_KEY) {
+  console.warn('Warning: LIMITLESS_API_KEY is not set in environment variables.');
+}
+if (!process.env.OPENAI_API_KEY) {
+  console.warn('Warning: OPENAI_API_KEY is not set in environment variables.');
+}
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
