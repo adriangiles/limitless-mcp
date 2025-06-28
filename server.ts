@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import bodyParser from 'body-parser';
 import db from './db';
 import OpenAI from 'openai';
@@ -11,7 +11,7 @@ app.use(bodyParser.json());
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // POST /memory endpoint for conversational memory queries
-app.post('/memory', async (req, res) => {
+app.post('/memory', async (req: Request, res: Response) => {
   try {
     const question: string = req.body.question;
     if (!question || typeof question !== 'string') {
@@ -92,7 +92,7 @@ console.log("Using Limitless API Key:", process.env.LIMITLESS_API_KEY?.slice(0, 
 
 
 
-app.post('/search', async (req, res) => {
+app.post('/search', async (req: Request, res: Response) => {
   try {
     const { query, date, timezone, limit = 50 } = req.body;
 
@@ -110,7 +110,7 @@ app.post('/search', async (req, res) => {
 });
 
 
-app.get('/', (req, res) => {
+app.get('/', (req: Request, res: Response) => {
 
   res.send('✅ Limitless MCP server running');
 });
