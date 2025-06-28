@@ -4,6 +4,7 @@ import db from './db';
 import { getLifelogs, getLifelogById } from './_client';
 import OpenAI from 'openai';
 import { parseMemoryQuery, queryRelevantLifelogs } from './memory_utils';
+import chrono from 'chrono-node';
 
 const app = express();
 app.use(bodyParser.json());
@@ -30,35 +31,44 @@ app.post('/memory', async (req, res) => {
     }
 
 
-    // Fallback for 'date': if missing or empty, default to today's date (YYYY-MM-DD) in server's timezone
-    // If a natural language date is provided (e.g. 'last week'), convert it to ISO format
-    let date: string = req.body.date;
+    // Advanced natural language date and range parsing using chrono-node
     const moment = require('moment-timezone');
+    let date: string = req.body.date;
+    let start: string | undefined = undefined;
+    let end: string | undefined = undefined;
+    const timezone: string = req.body.timezone || 'Australia/Melbourne';
     if (!date) {
-      // Use server's current date in YYYY-MM-DD format
-      date = moment().tz(req.body.timezone || 'Australia/Melbourne').format('YYYY-MM-DD');
-    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      // If not already in YYYY-MM-DD, try to parse common phrases
-      if (date.toLowerCase() === 'last week') {
-        // Set to last week's Monday
-        date = moment().tz(req.body.timezone || 'Australia/Melbourne').subtract(1, 'week').startOf('isoWeek').format('YYYY-MM-DD');
-      } else if (date.toLowerCase() === 'yesterday') {
-        date = moment().tz(req.body.timezone || 'Australia/Melbourne').subtract(1, 'day').format('YYYY-MM-DD');
+      // Default to today
+      date = moment().tz(timezone).format('YYYY-MM-DD');
+    } else {
+      // Try to parse date or range using chrono-node
+      const parsed = chrono.parse(date, new Date(), { forwardDate: true });
+      if (parsed.length > 0) {
+        const range = parsed[0];
+        if (range.start) {
+          start = moment(range.start.date()).tz(timezone).format('YYYY-MM-DD');
+        }
+        if (range.end) {
+          end = moment(range.end.date()).tz(timezone).format('YYYY-MM-DD');
+        }
+        if (!end && start) {
+          // If only a single date, treat as 'date'
+          date = start;
+        } else if (start && end) {
+          // If a range, clear 'date' and use start/end
+          date = '';
+        }
       } else {
         // fallback: use today's date
-        date = moment().tz(req.body.timezone || 'Australia/Melbourne').format('YYYY-MM-DD');
+        date = moment().tz(timezone).format('YYYY-MM-DD');
       }
     }
 
-    // Fallback for 'timezone': if missing, default to 'Australia/Melbourne'
-    let timezone: string = req.body.timezone;
-    if (!timezone) {
-      timezone = 'Australia/Melbourne';
-      // Inline comment: fallback to 'Australia/Melbourne' if 'timezone' is missing
-    }
 
-    // 1. Log the parsed input (prompt, date, timezone)
-    console.log('Received /memory request:', { prompt, date, timezone });
+
+
+    // 1. Log the parsed input (prompt, date, timezone, start, end)
+    console.log('Received /memory request:', { prompt, date, timezone, start, end });
 
 
 
@@ -70,18 +80,42 @@ app.post('/memory', async (req, res) => {
       return res.status(500).json({ error: 'Missing Limitless API key' });
     }
 
-    // Fetch lifelogs using the robust client (with date, timezone, etc.)
-    const lifelogs = await getLifelogs({
+
+    // Support additional filters from the request (isStarred, limit, etc.)
+    const isStarred = req.body.isStarred;
+    const limit = req.body.limit || 20;
+
+    // Build query params for Limitless API
+    const lifelogParams: any = {
       apiKey,
-      date,
       timezone,
-      limit: 20,
       includeMarkdown: true,
-      includeHeadings: false
-    });
-    console.log('Lifelogs returned from Limitless API:', lifelogs.length);
-    if (lifelogs.length > 0) {
-      console.log('Sample lifelog(s):', lifelogs.slice(0, 2));
+      includeHeadings: false,
+      limit,
+    };
+    if (date) lifelogParams.date = date;
+    if (start) lifelogParams.start = start;
+    if (end) lifelogParams.end = end;
+    if (typeof isStarred === 'boolean') lifelogParams.isStarred = isStarred;
+
+    let lifelogs: any[] = [];
+    try {
+      lifelogs = await getLifelogs(lifelogParams);
+      console.log('Lifelogs returned from Limitless API:', lifelogs.length);
+      if (lifelogs.length > 0) {
+        console.log('Sample lifelog(s):', lifelogs.slice(0, 2));
+      }
+    } catch (apiErr) {
+      console.error('Error fetching lifelogs from Limitless API:', apiErr);
+      let details = '';
+      if (apiErr instanceof Error) {
+        details = apiErr.message;
+      } else if (typeof apiErr === 'object' && apiErr && 'message' in apiErr) {
+        details = (apiErr as any).message;
+      } else {
+        details = String(apiErr);
+      }
+      return res.status(502).json({ error: 'Failed to fetch lifelogs from Limitless API', details });
     }
 
     // 3. Print the number of logs and the summary input text
