@@ -44,7 +44,10 @@ app.post('/memory', async (req, res) => {
     }
 
 
+
     // 1. Parse the prompt for time range and topics (unchanged)
+    // Ensure prompt is always a string (already checked above)
+    // parseMemoryQuery expects a string, so we pass prompt only
     const { timeRange, keywords } = parseMemoryQuery(prompt);
 
     // 2. Query relevant lifelogs from SQLite (unchanged)
