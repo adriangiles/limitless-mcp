@@ -2,10 +2,11 @@
   "name": "limitless-api-examples-typescript",
   "version": "1.0.0",
   "description": "TypeScript examples for the Limitless API",
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "start": "ts-node",
+    "start": "node dist/server.js",
+    "dev": "ts-node server.ts",
     "export-markdown": "ts-node export_markdown.ts",
     "summarize-day": "ts-node summarize_day.ts"
   },
