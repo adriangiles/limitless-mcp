@@ -13,8 +13,9 @@ async function syncLifelogs() {
     process.exit(1);
   }
 
-  // Fetch lifelogs from Limitless
-  const lifelogs = await getLifelogs({ apiKey, limit: 100 });
+  // Fetch all lifelogs from Limitless using pagination (limit: null = all)
+  // Only insert logs that are not already present in the DB (by id)
+  const lifelogs = await getLifelogs({ apiKey, limit: null });
 
   // Prepare insert/update statement
   const stmt = db.prepare(`
@@ -28,19 +29,24 @@ async function syncLifelogs() {
       updatedAt=excluded.updatedAt;
   `);
 
+  // Query all existing IDs in the DB to avoid re-inserting
+  const existingIds = new Set(db.prepare('SELECT id FROM lifelogs').all().map((row: any) => row.id));
+
   let count = 0;
   for (const log of lifelogs) {
-    stmt.run({
-      id: log.id,
-      title: log.title,
-      markdown: log.markdown,
-      startTime: log.startTime,
-      endTime: log.endTime,
-      updatedAt: log.updatedAt
-    });
-    count++;
+    if (!existingIds.has(log.id)) {
+      stmt.run({
+        id: log.id,
+        title: log.title,
+        markdown: log.markdown,
+        startTime: log.startTime,
+        endTime: log.endTime,
+        updatedAt: log.updatedAt
+      });
+      count++;
+    }
   }
-  console.log(`Synced ${count} lifelogs to local DB.`);
+  console.log(`Synced ${count} new lifelogs to local DB. (Skipped ${lifelogs.length - count} already present)`);
 }
 
 syncLifelogs().catch(err => {
