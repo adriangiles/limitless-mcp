@@ -137,20 +137,72 @@ console.log("Using Limitless API Key:", process.env.LIMITLESS_API_KEY?.slice(0, 
 
 
 
+
+// MCP /search endpoint: returns relevant lifelog entries for deep research
+
+// Define a type for lifelog rows
+type LifelogRow = {
+  id: string;
+  title: string;
+  markdown: string;
+  startTime: string;
+  endTime: string;
+  updatedAt: string;
+};
+
 app.post('/search', async (req, res) => {
   try {
-    const { query, date, timezone, limit = 50 } = req.body;
-
-    if (!query) {
-      res.status(400).json({ error: 'Missing search query' });
-      return;
+    const { query } = req.body;
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({ error: 'Missing query' });
     }
 
-    // ...existing code...
+    // Simple keyword search in title/markdown (case-insensitive)
+    const stmt = db.prepare(`
+      SELECT id, title, markdown FROM lifelogs
+      WHERE title LIKE ? OR markdown LIKE ?
+      LIMIT 10
+    `);
+    const results = (stmt.all(`%${query}%`, `%${query}%`) as LifelogRow[]).map((row) => ({
+      id: row.id,
+      title: row.title,
+      text: row.markdown?.slice(0, 200) + (row.markdown?.length > 200 ? '...' : ''),
+      url: `${req.protocol}://${req.get('host')}/fetch?id=${row.id}`
+    }));
+
+    res.json({ results });
   } catch (err) {
-    console.error(err);
+    console.error('Error in /search:', err);
     res.status(500).json({ error: 'Search failed' });
-    return;
+  }
+});
+
+// MCP /fetch endpoint: returns full content for a given lifelog id
+app.post('/fetch', async (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ error: 'Missing id' });
+    }
+
+    const stmt = db.prepare(`SELECT * FROM lifelogs WHERE id = ?`);
+    const row = stmt.get(id) as LifelogRow | undefined;
+    if (!row) return res.status(404).json({ error: 'Not found' });
+
+    res.json({
+      id: row.id,
+      title: row.title,
+      text: row.markdown,
+      url: `${req.protocol}://${req.get('host')}/fetch?id=${row.id}`,
+      metadata: {
+        startTime: row.startTime,
+        endTime: row.endTime,
+        updatedAt: row.updatedAt
+      }
+    });
+  } catch (err) {
+    console.error('Error in /fetch:', err);
+    res.status(500).json({ error: 'Fetch failed' });
   }
 });
 
