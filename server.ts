@@ -15,6 +15,7 @@ app.post('/memory', async (req, res) => {
 
   try {
 
+
     // Accept either 'prompt' or 'query' as the input field (for Custom GPT compatibility)
     // This allows GPTs that send 'query' instead of 'prompt' to work
     const prompt: string = req.body.prompt || req.body.query;
@@ -43,34 +44,28 @@ app.post('/memory', async (req, res) => {
       // Inline comment: fallback to 'Australia/Melbourne' if 'timezone' is missing
     }
 
+    // 1. Log the parsed input (prompt, date, timezone)
+    console.log('Received /memory request:', { prompt, date, timezone });
 
 
-    // 1. Parse the prompt for time range and topics
+
+
+    // 2. Ensure we are querying the local lifelogs.db (not the Limitless API)
+    // (queryRelevantLifelogs uses the local db instance)
+
+    // Parse the prompt for time range and topics
     const { timeRange, keywords } = parseMemoryQuery(prompt);
-    // Log the parsed date range for debugging
     console.log('Parsed timeRange:', timeRange);
     console.log('Extracted keywords:', keywords);
 
-    // 2. Query relevant lifelogs from SQLite
+    // Query relevant lifelogs from SQLite
     const lifelogs = queryRelevantLifelogs(db, { timeRange, keywords, limit: 20 });
-    // Log how many lifelogs are returned
     console.log('Lifelogs returned from DB:', lifelogs.length);
     if (lifelogs.length > 0) {
-      // Log the first few lifelogs for verification
       console.log('Sample lifelog(s):', lifelogs.slice(0, 2));
     }
 
-    // 4. Fallback handling if no logs are found
-    if (!lifelogs.length) {
-      console.log('No relevant lifelogs found for this query.');
-      return res.json({ result: "I couldn't find any relevant memories for your request. Try rephrasing or expanding your question." });
-    }
-
-    // 3. Summarize with OpenAI (unchanged)
-    // Log that we're passing these logs to OpenAI
-    console.log('Passing lifelogs to OpenAI for summarisation.');
-    const systemPrompt =
-      'You are a memory assistant helping the user understand what they experienced or discussed.';
+    // 3. Print the number of logs and the summary input text
     const userPrompt =
       `Here are some lifelog entries:\n\n${lifelogs
         .map(
@@ -78,6 +73,10 @@ app.post('/memory', async (req, res) => {
             `Title: ${log.title}\nTime: ${log.startTime}\n${log.markdown}`
         )
         .join('\n---\n')}\n\nUser question: ${prompt}\n\nSummarize the relevant information in a clear, conversational way.`;
+    console.log('Summary input text for OpenAI:', userPrompt);
+
+    // 4. Return the summary input text directly to confirm data flow
+    return res.json({ result: userPrompt });
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
