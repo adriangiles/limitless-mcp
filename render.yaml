@@ -3,8 +3,8 @@ services:
     name: limitless-mcp
     env: node
     plan: free
-    buildCommand: ''
-    startCommand: node server.ts
+    buildCommand: npm run sync-lifelogs && npm run build
+    startCommand: node dist/server.js
     branch: main
     envVars:
       - key: LIMITLESS_API_KEY
