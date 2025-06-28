@@ -1,3 +1,36 @@
+// Fetch a single lifelog by ID from the Limitless API
+export async function getLifelogById({
+  apiKey,
+  id,
+  apiUrl = process.env.LIMITLESS_API_URL || "https://api.limitless.ai",
+  endpoint = "v1/lifelogs",
+  includeMarkdown = true,
+  includeHeadings = false
+}: {
+  apiKey: string;
+  id: string;
+  apiUrl?: string;
+  endpoint?: string;
+  includeMarkdown?: boolean;
+  includeHeadings?: boolean;
+}): Promise<any | null> {
+  try {
+    const params: Record<string, string> = {
+      includeMarkdown: includeMarkdown.toString(),
+      includeHeadings: includeHeadings.toString(),
+    };
+    const response = await axios.get(`${apiUrl}/${endpoint}/${id}`, {
+      headers: { "X-API-Key": apiKey },
+      params,
+    });
+    return response.data.data.lifelog;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
 import axios from "axios";
 import moment from "moment-timezone";
 

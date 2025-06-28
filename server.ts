@@ -1,6 +1,7 @@
 import express from 'express';
 import bodyParser from 'body-parser';
 import db from './db';
+import { getLifelogs, getLifelogById } from './_client';
 import OpenAI from 'openai';
 import { parseMemoryQuery, queryRelevantLifelogs } from './memory_utils';
 
@@ -140,16 +141,8 @@ console.log("Using Limitless API Key:", process.env.LIMITLESS_API_KEY?.slice(0, 
 
 // MCP /search endpoint: returns relevant lifelog entries for deep research
 
-// Define a type for lifelog rows
-type LifelogRow = {
-  id: string;
-  title: string;
-  markdown: string;
-  startTime: string;
-  endTime: string;
-  updatedAt: string;
-};
 
+// MCP /search endpoint: returns relevant lifelog entries for deep research (calls Limitless API directly)
 app.post('/search', async (req, res) => {
   try {
     const { query } = req.body;
@@ -157,18 +150,30 @@ app.post('/search', async (req, res) => {
       return res.status(400).json({ error: 'Missing query' });
     }
 
-    // Simple keyword search in title/markdown (case-insensitive)
-    const stmt = db.prepare(`
-      SELECT id, title, markdown FROM lifelogs
-      WHERE title LIKE ? OR markdown LIKE ?
-      LIMIT 10
-    `);
-    const results = (stmt.all(`%${query}%`, `%${query}%`) as LifelogRow[]).map((row) => ({
-      id: row.id,
-      title: row.title,
-      text: row.markdown?.slice(0, 200) + (row.markdown?.length > 200 ? '...' : ''),
-      url: `${req.protocol}://${req.get('host')}/fetch?id=${row.id}`
-    }));
+    const apiKey = process.env.LIMITLESS_API_KEY || '';
+    if (!apiKey) return res.status(500).json({ error: 'API key missing' });
+
+    // Fetch lifelogs from Limitless API (first 50, adjust as needed)
+    const lifelogs = await getLifelogs({ apiKey, limit: 50 });
+
+    // Filter results for the query (simple keyword match)
+    const results = lifelogs
+      .filter(log =>
+        (log.title && log.title.toLowerCase().includes(query.toLowerCase())) ||
+        (log.markdown && log.markdown.toLowerCase().includes(query.toLowerCase()))
+      )
+      .map(log => {
+        let snippet = '';
+        if (typeof log.markdown === 'string') {
+          snippet = log.markdown.length > 200 ? log.markdown.slice(0, 200) + '...' : log.markdown;
+        }
+        return {
+          id: log.id,
+          title: log.title,
+          text: snippet,
+          url: `https://app.limitless.ai/lifelogs/${log.id}`
+        };
+      });
 
     res.json({ results });
   } catch (err) {
@@ -177,7 +182,7 @@ app.post('/search', async (req, res) => {
   }
 });
 
-// MCP /fetch endpoint: returns full content for a given lifelog id
+// MCP /fetch endpoint: returns full content for a given lifelog id (calls Limitless API directly)
 app.post('/fetch', async (req, res) => {
   try {
     const { id } = req.body;
@@ -185,19 +190,21 @@ app.post('/fetch', async (req, res) => {
       return res.status(400).json({ error: 'Missing id' });
     }
 
-    const stmt = db.prepare(`SELECT * FROM lifelogs WHERE id = ?`);
-    const row = stmt.get(id) as LifelogRow | undefined;
-    if (!row) return res.status(404).json({ error: 'Not found' });
+    const apiKey = process.env.LIMITLESS_API_KEY || '';
+    if (!apiKey) return res.status(500).json({ error: 'API key missing' });
+
+    const log = await getLifelogById({ apiKey, id });
+    if (!log) return res.status(404).json({ error: 'Not found' });
 
     res.json({
-      id: row.id,
-      title: row.title,
-      text: row.markdown,
-      url: `${req.protocol}://${req.get('host')}/fetch?id=${row.id}`,
+      id: log.id,
+      title: log.title,
+      text: log.markdown,
+      url: `https://app.limitless.ai/lifelogs/${log.id}`,
       metadata: {
-        startTime: row.startTime,
-        endTime: row.endTime,
-        updatedAt: row.updatedAt
+        startTime: log.startTime,
+        endTime: log.endTime,
+        updatedAt: log.updatedAt
       }
     });
   } catch (err) {
