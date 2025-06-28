@@ -9,20 +9,23 @@
     "dev": "ts-node server.ts",
     "export-markdown": "ts-node export_markdown.ts",
     "summarize-day": "ts-node summarize_day.ts",
-    "postinstall": "npm install --no-save @types/jest"
+    "postinstall": "npm install --no-save @types/jest",
+    "sync-lifelogs": "ts-node sync_lifelogs.ts"
   },
   "dependencies": {
+    "@types/jest": "^30.0.0",
     "axios": "^1.6.7",
+    "better-sqlite3": "^12.1.1",
     "body-parser": "^2.2.0",
     "chrono-node": "^2.8.3",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "fuse.js": "^7.1.0",
     "moment-timezone": "^0.5.45",
-    "openai": "^4.104.0",
-    "@types/jest": "^30.0.0"
+    "openai": "^4.104.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/body-parser": "^1.19.6",
     "@types/express": "^5.0.3",
     "@types/jest": "^30.0.0",
