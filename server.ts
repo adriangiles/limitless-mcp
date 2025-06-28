@@ -8,6 +8,10 @@ import { parseMemoryQuery, queryRelevantLifelogs } from './memory_utils';
 const app = express();
 app.use(bodyParser.json());
 
+// Serve openapi.yaml at /openapi.yaml
+import openapiRoute from './openapiRoute';
+app.use(openapiRoute);
+
 // Only create OpenAI client once
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 

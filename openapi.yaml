@@ -5,7 +5,7 @@ info:
     Natural language memory search and summarization for your Limitless lifelogs. Use this API to ask questions like "What did I say about Mimi last week?" and get a GPT-generated summary from your local lifelog cache.
   version: 1.0.0
 servers:
-  - url: https://limitless-mcp.onrender.com  # Production server URL for Render deployment
+  - url: https://limitless-mcp.onrender.com
 paths:
   /memory:
     post:
@@ -42,3 +42,87 @@ paths:
                   result:
                     type: string
                     description: The GPT-generated summary of relevant lifelogs
+  /search:
+    post:
+      summary: Search lifelogs
+      description: Search lifelogs using a query string. Returns a list of relevant lifelogs.
+      operationId: searchLifelogs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                  description: Search query string
+              required:
+                - query
+      responses:
+        '200':
+          description: List of lifelogs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LifelogSummary'
+  /fetch:
+    post:
+      summary: Fetch lifelog by ID
+      description: Fetch a single lifelog by its ID.
+      operationId: fetchLifelog
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  description: Lifelog ID
+              required:
+                - id
+      responses:
+        '200':
+          description: Lifelog object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lifelog'
+components:
+  schemas:
+    LifelogSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        text:
+          type: string
+        url:
+          type: string
+    Lifelog:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        markdown:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
