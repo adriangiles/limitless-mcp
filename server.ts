@@ -45,19 +45,30 @@ app.post('/memory', async (req, res) => {
 
 
 
-    // 1. Parse the prompt for time range and topics (unchanged)
-    // Ensure prompt is always a string (already checked above)
-    // parseMemoryQuery expects a string, so we pass prompt only
+    // 1. Parse the prompt for time range and topics
     const { timeRange, keywords } = parseMemoryQuery(prompt);
+    // Log the parsed date range for debugging
+    console.log('Parsed timeRange:', timeRange);
+    console.log('Extracted keywords:', keywords);
 
-    // 2. Query relevant lifelogs from SQLite (unchanged)
+    // 2. Query relevant lifelogs from SQLite
     const lifelogs = queryRelevantLifelogs(db, { timeRange, keywords, limit: 20 });
+    // Log how many lifelogs are returned
+    console.log('Lifelogs returned from DB:', lifelogs.length);
+    if (lifelogs.length > 0) {
+      // Log the first few lifelogs for verification
+      console.log('Sample lifelog(s):', lifelogs.slice(0, 2));
+    }
 
+    // 4. Fallback handling if no logs are found
     if (!lifelogs.length) {
-      return res.json({ result: "I couldn't find any relevant memories." });
+      console.log('No relevant lifelogs found for this query.');
+      return res.json({ result: "I couldn't find any relevant memories for your request. Try rephrasing or expanding your question." });
     }
 
     // 3. Summarize with OpenAI (unchanged)
+    // Log that we're passing these logs to OpenAI
+    console.log('Passing lifelogs to OpenAI for summarisation.');
     const systemPrompt =
       'You are a memory assistant helping the user understand what they experienced or discussed.';
     const userPrompt =
