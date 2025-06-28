@@ -16,10 +16,10 @@
     "node": "20.x"
   },
   "dependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/jest": "^30.0.0",
     "axios": "^1.6.7",
     "better-sqlite3": "^12.1.1",
-    "@types/better-sqlite3": "^7.6.13",
     "body-parser": "^2.2.0",
     "chrono-node": "^2.8.3",
     "dotenv": "^16.6.1",
@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@types/body-parser": "^1.19.6",
-    
+    "@types/express": "^5.0.3",
     "@types/node": "^20.19.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
