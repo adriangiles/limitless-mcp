@@ -8,7 +8,8 @@
     "start": "node dist/server.js",
     "dev": "ts-node server.ts",
     "export-markdown": "ts-node export_markdown.ts",
-    "summarize-day": "ts-node summarize_day.ts"
+    "summarize-day": "ts-node summarize_day.ts",
+    "postinstall": "npm install --no-save @types/jest"
   },
   "dependencies": {
     "axios": "^1.6.7",
