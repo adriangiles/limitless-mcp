@@ -55,21 +55,26 @@ app.post('/memory', async (req, res) => {
 
 
 
-    // 2. Ensure we are querying the local lifelogs.db (not the Limitless API)
-    // (queryRelevantLifelogs uses the local db instance)
 
-    // Parse the prompt for time range and topics
-    const { timeRange, keywords } = parseMemoryQuery(prompt);
-    console.log('Parsed timeRange:', timeRange);
-    console.log('Extracted keywords:', keywords);
+    // 2. Query lifelogs from the Limitless API (not the local DB)
+    const apiKey = process.env.LIMITLESS_API_KEY || '';
+    if (!apiKey) {
+      return res.status(500).json({ error: 'Missing Limitless API key' });
+    }
 
-    // Query relevant lifelogs from SQLite
-    const lifelogs = queryRelevantLifelogs(db, { timeRange, keywords, limit: 20 });
-    console.log('Lifelogs returned from DB:', lifelogs.length);
+    // Fetch lifelogs using the robust client (with date, timezone, etc.)
+    const lifelogs = await getLifelogs({
+      apiKey,
+      date,
+      timezone,
+      limit: 20,
+      includeMarkdown: true,
+      includeHeadings: false
+    });
+    console.log('Lifelogs returned from Limitless API:', lifelogs.length);
     if (lifelogs.length > 0) {
       console.log('Sample lifelog(s):', lifelogs.slice(0, 2));
     }
-
 
     // 3. Print the number of logs and the summary input text
     const userPrompt =
