@@ -1,4 +1,4 @@
-import chrono from 'chrono-node';
+import * as chrono from 'chrono-node';
 import Fuse from 'fuse.js';
 import type Database from 'better-sqlite3';
 
@@ -9,7 +9,8 @@ export function parseMemoryQuery(question: string): {
   keywords: string[];
 } {
   // Use chrono-node to parse dates
-  const results = chrono.parse(question);
+  // Fallback: if question is empty, use 'today' as a default
+  const results = chrono.parse(question || 'today');
   let start: Date | null = null;
   let end: Date | null = null;
   if (results.length > 0) {
