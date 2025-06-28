@@ -5,7 +5,7 @@ import db from './db';
 import { getLifelogs, getLifelogById } from './_client';
 import OpenAI from 'openai';
 import { parseMemoryQuery, queryRelevantLifelogs } from './memory_utils';
-import chrono from 'chrono-node';
+import * as chrono from 'chrono-node';
 import rateLimit from 'express-rate-limit';
 import morgan from 'morgan';
 
