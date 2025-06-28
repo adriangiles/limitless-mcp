@@ -1,0 +1,44 @@
+openapi: 3.1.0
+info:
+  title: Limitless MCP Memory API
+  description: |
+    Natural language memory search and summarization for your Limitless lifelogs. Use this API to ask questions like "What did I say about Mimi last week?" and get a GPT-generated summary from your local lifelog cache.
+  version: 1.0.0
+servers:
+  - url: https://limitless-mcp.onrender.com  # Production server URL for Render deployment
+paths:
+  /memory:
+    post:
+      summary: Conversational memory query
+      description: |
+        Query your lifelog memory using natural language. Returns a GPT-generated summary of relevant events.
+      operationId: memoryQuery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prompt:
+                  type: string
+                  description: The user's natural language memory question (e.g. "What did I say about Mimi last week?")
+                date:
+                  type: string
+                  description: Optional date or time range (e.g. "yesterday", "last week", or ISO date)
+                timezone:
+                  type: string
+                  description: Optional timezone (e.g. "Australia/Melbourne")
+              required:
+                - prompt
+      responses:
+        '200':
+          description: GPT-generated memory summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: string
+                    description: The GPT-generated summary of relevant lifelogs

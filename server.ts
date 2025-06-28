@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
 import bodyParser from 'body-parser';
 import db from './db';
 import OpenAI from 'openai';
@@ -11,24 +11,29 @@ app.use(bodyParser.json());
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // POST /memory endpoint for conversational memory queries
-app.post('/memory', async (req: Request, res: Response) => {
+app.post('/memory', async (req, res) => {
+
   try {
-    const question: string = req.body.question;
-    if (!question || typeof question !== 'string') {
-      return res.status(400).json({ error: 'Missing or invalid question' });
+    // Accept either 'prompt' or 'query' as the input field (for Custom GPT compatibility)
+    // This allows GPTs that send 'query' instead of 'prompt' to work
+    const prompt: string = req.body.prompt || req.body.query;
+    // Fallback to 400 error if neither is present
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: 'Missing or invalid prompt/query' });
     }
 
-    // 1. Parse the question for time range and topics
-    const { timeRange, keywords } = parseMemoryQuery(question);
 
-    // 2. Query relevant lifelogs from SQLite
+    // 1. Parse the prompt for time range and topics (unchanged)
+    const { timeRange, keywords } = parseMemoryQuery(prompt);
+
+    // 2. Query relevant lifelogs from SQLite (unchanged)
     const lifelogs = queryRelevantLifelogs(db, { timeRange, keywords, limit: 20 });
 
     if (!lifelogs.length) {
-      return res.json({ summary: "I couldn't find any relevant memories." });
+      return res.json({ result: "I couldn't find any relevant memories." });
     }
 
-    // 3. Summarize with OpenAI
+    // 3. Summarize with OpenAI (unchanged)
     const systemPrompt =
       'You are a memory assistant helping the user understand what they experienced or discussed.';
     const userPrompt =
@@ -37,7 +42,7 @@ app.post('/memory', async (req: Request, res: Response) => {
           (log: any) =>
             `Title: ${log.title}\nTime: ${log.startTime}\n${log.markdown}`
         )
-        .join('\n---\n')}\n\nUser question: ${question}\n\nSummarize the relevant information in a clear, conversational way.`;
+        .join('\n---\n')}\n\nUser question: ${prompt}\n\nSummarize the relevant information in a clear, conversational way.`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
@@ -49,7 +54,8 @@ app.post('/memory', async (req: Request, res: Response) => {
     });
 
     const summary = completion.choices[0]?.message?.content?.trim() || '';
-    res.json({ summary });
+    // Respond with { result } to match OpenAPI spec and Custom GPT expectations
+    res.json({ result: summary });
   } catch (err) {
     console.error('Error in /memory:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -92,7 +98,7 @@ console.log("Using Limitless API Key:", process.env.LIMITLESS_API_KEY?.slice(0, 
 
 
 
-app.post('/search', async (req: Request, res: Response) => {
+app.post('/search', async (req, res) => {
   try {
     const { query, date, timezone, limit = 50 } = req.body;
 
@@ -110,7 +116,7 @@ app.post('/search', async (req: Request, res: Response) => {
 });
 
 
-app.get('/', (req: Request, res: Response) => {
+app.get('/', (req, res) => {
 
   res.send('✅ Limitless MCP server running');
 });
