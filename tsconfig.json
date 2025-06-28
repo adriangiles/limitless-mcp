@@ -9,7 +9,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    // Removed "types" to allow automatic type inclusion for all dependencies
+    "types": ["node", "jest"],
   },
   "include": ["./**/*"],
   "exclude": ["node_modules", "dist"]
