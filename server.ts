@@ -1,3 +1,4 @@
+
 import express from 'express';
 import bodyParser from 'body-parser';
 import db from './db';
@@ -5,9 +6,25 @@ import { getLifelogs, getLifelogById } from './_client';
 import OpenAI from 'openai';
 import { parseMemoryQuery, queryRelevantLifelogs } from './memory_utils';
 import chrono from 'chrono-node';
+import rateLimit from 'express-rate-limit';
+import morgan from 'morgan';
+
 
 const app = express();
 app.use(bodyParser.json());
+
+// Add request logging
+app.use(morgan('combined'));
+
+// Add rate limiting (e.g., 100 requests per 15 minutes per IP)
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many requests from this IP, please try again later.'
+});
+app.use(limiter);
 
 // Serve openapi.yaml at /openapi.yaml
 import openapiRoute from './openapiRoute';
@@ -118,14 +135,28 @@ app.post('/memory', async (req, res) => {
       return res.status(502).json({ error: 'Failed to fetch lifelogs from Limitless API', details });
     }
 
+
     // 3. Print the number of logs and the summary input text
+    // Enrich prompt with tags, starred, and support for pagination (showing only the first N if too many)
+    const maxLifelogsForPrompt = 10;
+    let lifelogText = lifelogs.slice(0, maxLifelogsForPrompt).map((log: any) => {
+      let meta = [];
+      if (log.isStarred) meta.push('⭐ Starred');
+      if (log.tags && Array.isArray(log.tags) && log.tags.length > 0) meta.push(`Tags: ${log.tags.join(', ')}`);
+      return [
+        `Title: ${log.title}`,
+        `Time: ${log.startTime}`,
+        meta.length ? meta.join(' | ') : '',
+        log.markdown
+      ].filter(Boolean).join('\n');
+    }).join('\n---\n');
+
+    if (lifelogs.length > maxLifelogsForPrompt) {
+      lifelogText += `\n\n(Note: Only the first ${maxLifelogsForPrompt} of ${lifelogs.length} lifelogs are shown here.)`;
+    }
+
     const userPrompt =
-      `Here are some lifelog entries:\n\n${lifelogs
-        .map(
-          (log: any) =>
-            `Title: ${log.title}\nTime: ${log.startTime}\n${log.markdown}`
-        )
-        .join('\n---\n')}\n\nUser question: ${prompt}\n\nSummarize the relevant information in a clear, conversational way.`;
+      `Here are some lifelog entries:\n\n${lifelogText}\n\nUser question: ${prompt}\n\nSummarize the relevant information in a clear, conversational way.`;
     console.log('Summary input text for OpenAI:', userPrompt);
 
     // Define a good default system prompt for OpenAI summarisation
