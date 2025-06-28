@@ -1,18 +1,13 @@
-# Node
+# Node modules
 node_modules/
-.DS_Store
 
 # Environment variables
 .env
-.env.*
 
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# OS
-Thumbs.db
-
-# VSCode
-.vscode/
+# OS files
+.DS_Store

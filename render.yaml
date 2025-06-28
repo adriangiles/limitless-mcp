@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: limitless-mcp
+    env: node
+    plan: free
+    buildCommand: ''
+    startCommand: node server.ts
+    branch: main
+    envVars:
+      - key: LIMITLESS_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+    disks:
+      - name: data
+        mountPath: /data
+        sizeGB: 1
