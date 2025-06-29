@@ -34,93 +34,59 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // POST /memory endpoint for conversational memory queries
 app.post('/memory', async (req, res) => {
-
   try {
-
-
-    // Accept either 'prompt' or 'query' as the input field (for Custom GPT compatibility)
-    // This allows GPTs that send 'query' instead of 'prompt' to work
     const prompt: string = req.body.prompt || req.body.query;
-    // Fallback to 400 error if neither is present
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({ error: 'Missing or invalid prompt/query' });
     }
 
-
-    // Advanced natural language date and range parsing using chrono-node
+    // 1. Parse the provided `date` into a full day range using chrono-node and moment-timezone
     const moment = require('moment-timezone');
-    let date: string = req.body.date;
-    let start: string | undefined = undefined;
-    let end: string | undefined = undefined;
+    const chrono = require('chrono-node');
     const timezone: string = req.body.timezone || 'Australia/Melbourne';
-    if (!date) {
-      // Default to today
-      date = moment().tz(timezone).format('YYYY-MM-DD');
-    } else {
-      // Try to parse date or range using chrono-node
+    let date: string = req.body.date;
+    let start: string | undefined;
+    let end: string | undefined;
+    if (date) {
       const parsed = chrono.parse(date, new Date(), { forwardDate: true });
-      if (parsed.length > 0) {
-        const range = parsed[0];
-        if (range.start) {
-          start = moment(range.start.date()).tz(timezone).format('YYYY-MM-DD');
-        }
-        if (range.end) {
-          end = moment(range.end.date()).tz(timezone).format('YYYY-MM-DD');
-        }
-        if (!end && start) {
-          // If only a single date, treat as 'date'
-          date = start;
-        } else if (start && end) {
-          // If a range, clear 'date' and use start/end
-          date = '';
-        }
-      } else {
-        // fallback: use today's date
-        date = moment().tz(timezone).format('YYYY-MM-DD');
+      if (parsed.length > 0 && parsed[0].start) {
+        start = moment(parsed[0].start.date()).tz(timezone).startOf('day').format();
+        end = moment(parsed[0].start.date()).tz(timezone).endOf('day').format();
       }
     }
+    if (!start || !end) {
+      start = moment().tz(timezone).startOf('day').format();
+      end = moment().tz(timezone).endOf('day').format();
+    }
+    const logDateRange = { start, end };
 
+    // 2. Log the prompt, parsed start/end, and timezone
+    console.log('[MEMORY] Prompt:', prompt);
+    console.log('[MEMORY] Date:', date, '| Timezone:', timezone);
+    console.log('[MEMORY] Parsed range:', logDateRange);
 
-
-
-    // 1. Log the parsed input (prompt, date, timezone, start, end)
-    console.log('Received /memory request:', { prompt, date, timezone, start, end });
-
-
-
-
-
-    // 2. Query lifelogs from the Limitless API (not the local DB)
+    // 3. Pass both start and end explicitly to the lifelog retrieval query
     const apiKey = process.env.LIMITLESS_API_KEY || '';
     if (!apiKey) {
       return res.status(500).json({ error: 'Missing Limitless API key' });
     }
-
-
-    // Support additional filters from the request (isStarred, limit, etc.)
     const isStarred = req.body.isStarred;
     const limit = req.body.limit || 20;
-
-    // Build query params for Limitless API
     const lifelogParams: any = {
       apiKey,
       timezone,
       includeMarkdown: true,
       includeHeadings: false,
       limit,
+      start,
+      end
     };
-    if (date) lifelogParams.date = date;
-    if (start) lifelogParams.start = start;
-    if (end) lifelogParams.end = end;
     if (typeof isStarred === 'boolean') lifelogParams.isStarred = isStarred;
 
     let lifelogs: any[] = [];
     try {
       lifelogs = await getLifelogs(lifelogParams);
-      console.log('Lifelogs returned from Limitless API:', lifelogs.length);
-      if (lifelogs.length > 0) {
-        console.log('Sample lifelog(s):', lifelogs.slice(0, 2));
-      }
+      console.log(`[MEMORY] Lifelogs returned: ${lifelogs.length}`);
     } catch (apiErr) {
       console.error('Error fetching lifelogs from Limitless API:', apiErr);
       let details = '';
@@ -134,37 +100,19 @@ app.post('/memory', async (req, res) => {
       return res.status(502).json({ error: 'Failed to fetch lifelogs from Limitless API', details });
     }
 
-
-    // 3. Fallback if no memory found
-    // For logging
-    let logDateRange = { start, end };
+    // 4. If no logs are found, return a clear fallback message instead of calling OpenAI
     if (!lifelogs.length) {
-      console.log(`[MEMORY] No lifelogs found for range:`, logDateRange);
+      console.log('[MEMORY] No lifelogs found for range:', logDateRange);
       return res.json({ result: `No memory available for that time range or topic.\n(Time range used: ${start} to ${end} in ${timezone})` });
     }
 
-    // 4. Print the number of logs and the summary input text
-    // Enrich prompt with tags, starred, and support for pagination (showing only the first N if too many)
+    // 5. If logs are found, concatenate markdowns and pass them to OpenAI with a clear summarisation prompt
     const maxLifelogsForPrompt = 10;
-    let lifelogText = lifelogs.slice(0, maxLifelogsForPrompt).map((log: any) => {
-      let meta = [];
-      if (log.isStarred) meta.push('⭐ Starred');
-      if (log.tags && Array.isArray(log.tags) && log.tags.length > 0) meta.push(`Tags: ${log.tags.join(', ')}`);
-      return [
-        `Title: ${log.title || '(untitled)'}`,
-        `Time: ${log.startTime || ''}`,
-        meta.length ? meta.join(' | ') : '',
-        log.markdown || ''
-      ].filter(Boolean).join('\n');
-    }).join('\n---\n');
-    if (lifelogs.length > maxLifelogsForPrompt) {
-      lifelogText += `\n\n(Note: Only the first ${maxLifelogsForPrompt} of ${lifelogs.length} lifelogs are shown here.)`;
-    }
-
-    // 5. Build a strong OpenAI prompt for high-quality summaries
+    const logsForPrompt = lifelogs.slice(0, maxLifelogsForPrompt);
+    const combinedMarkdown = logsForPrompt.map((log: any) => log.markdown || '').join('\n---\n');
     const userPrompt =
-      `You are a memory assistant. Summarize the following lifelog conversations for the user:\n\n` +
-      `${lifelogText}\n\n` +
+      `Here are your lifelog entries for the requested time range. Please summarise them for the user.\n\n` +
+      `${combinedMarkdown}\n\n` +
       `User question: ${prompt}\n\n` +
       `Instructions:\n` +
       `- Return a summary in bullet points\n` +
@@ -174,12 +122,12 @@ app.post('/memory', async (req, res) => {
       `- Be clear, concise, and helpful\n`;
 
     // 6. Log the number of lifelogs, characters/tokens, and prompt preview
-    console.log(`[MEMORY] Preparing summary for ${lifelogs.length} lifelogs, ${lifelogText.length} chars`);
+    console.log(`[MEMORY] Preparing summary for ${lifelogs.length} lifelogs, ${combinedMarkdown.length} chars`);
     console.log('[MEMORY] OpenAI prompt preview:', userPrompt.slice(0, 500));
 
     // 7. Call OpenAI to generate the summary
     const systemPrompt =
-      'You are a helpful memory assistant. Given a set of lifelog entries and a user question, provide a clear, concise, and conversational summary of the most relevant information.';
+      'You are a helpful memory assistant. Given a set of lifelog entries and a user question, provide a clear, concise, and conversational summary of the most relevant information. Include bullet points, key topics, decisions, and emotional tone if relevant.';
     let summary = '';
     try {
       const completion = await openai.chat.completions.create({
