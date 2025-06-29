@@ -144,39 +144,60 @@ app.post('/memory', async (req, res) => {
       if (log.isStarred) meta.push('⭐ Starred');
       if (log.tags && Array.isArray(log.tags) && log.tags.length > 0) meta.push(`Tags: ${log.tags.join(', ')}`);
       return [
-        `Title: ${log.title}`,
-        `Time: ${log.startTime}`,
+        `Title: ${log.title || '(untitled)'}`,
+        `Time: ${log.startTime || ''}`,
         meta.length ? meta.join(' | ') : '',
-        log.markdown
+        log.markdown || ''
       ].filter(Boolean).join('\n');
     }).join('\n---\n');
-
     if (lifelogs.length > maxLifelogsForPrompt) {
       lifelogText += `\n\n(Note: Only the first ${maxLifelogsForPrompt} of ${lifelogs.length} lifelogs are shown here.)`;
     }
 
+    // 4. Build a strong OpenAI prompt for high-quality summaries
     const userPrompt =
-      `Here are some lifelog entries:\n\n${lifelogText}\n\nUser question: ${prompt}\n\nSummarize the relevant information in a clear, conversational way.`;
-    console.log('Summary input text for OpenAI:', userPrompt);
+      `You are a memory assistant. Summarize the following lifelog conversations for the user:\n\n` +
+      `${lifelogText}\n\n` +
+      `User question: ${prompt}\n\n` +
+      `Instructions:\n` +
+      `- Return a summary in bullet points\n` +
+      `- List key discussion topics\n` +
+      `- Highlight any decisions or action items\n` +
+      `- Optionally, note the emotional tone if relevant\n` +
+      `- Be clear, concise, and helpful\n`;
 
-    // Define a good default system prompt for OpenAI summarisation
+    // 5. Log the number of lifelogs, characters/tokens, and prompt preview
+    console.log(`[MEMORY] Preparing summary for ${lifelogs.length} lifelogs, ${lifelogText.length} chars`);
+    console.log('[MEMORY] OpenAI prompt preview:', userPrompt.slice(0, 500));
+
+    // 6. Call OpenAI to generate the summary
     const systemPrompt =
       'You are a helpful memory assistant. Given a set of lifelog entries and a user question, provide a clear, concise, and conversational summary of the most relevant information.';
+    let summary = '';
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        max_tokens: 400
+      });
+      summary = completion.choices[0]?.message?.content?.trim() || '';
+    } catch (aiErr) {
+      console.error('[MEMORY] OpenAI summarisation failed:', aiErr);
+      let details = '';
+      if (aiErr instanceof Error) {
+        details = aiErr.message;
+      } else if (typeof aiErr === 'object' && aiErr && 'message' in aiErr) {
+        details = (aiErr as any).message;
+      } else {
+        details = String(aiErr);
+      }
+      return res.status(502).json({ error: 'Failed to generate summary', details });
+    }
 
-    // 4. Return the summary input text directly to confirm data flow (TEMPORARY: comment out to enable OpenAI call)
-    // return res.json({ result: userPrompt });
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      max_tokens: 400
-    });
-
-    const summary = completion.choices[0]?.message?.content?.trim() || '';
-    // Respond with { result } to match OpenAPI spec and Custom GPT expectations
+    // 7. Return the summary as { result }
     res.json({ result: summary });
   } catch (err) {
     console.error('Error in /memory:', err);

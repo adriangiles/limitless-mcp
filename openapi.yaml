@@ -1,8 +1,21 @@
-openapi: 3.1.0
+openapi: 3.0.3
 info:
   title: Limitless MCP Memory API
   description: |
-    Natural language memory search and summarization for your Limitless lifelogs. Use this API to ask questions like "What did I say about Mimi last week?" and get a GPT-generated summary from your local lifelog cache.
+    Natural language memory search and summarization for your Limitless lifelogs. Use this API to ask questions like "What did I say about Mimi last week?" and get a GPT-generated summary from your lifelog data.
+    
+    **Supported prompt patterns:**
+      - "What did I say about [topic] last week?"
+      - "Show me all meetings from yesterday."
+      - "Summarize all starred lifelogs from March 2025."
+      - "What did I mention about [person] between June 1 and June 10?"
+    
+    **Query options:**
+      - `date`: Accepts natural language ("yesterday", "last week", "March 2025") or ISO date (YYYY-MM-DD)
+      - `timezone`: IANA timezone (e.g., "Australia/Melbourne")
+      - `isStarred`: Filter for starred lifelogs (true/false)
+      - `limit`: Max number of lifelogs to fetch (default: 20)
+      - `start`, `end`: For date ranges (YYYY-MM-DD)
   version: 1.0.0
 servers:
   - url: https://limitless-mcp.onrender.com
@@ -23,12 +36,23 @@ paths:
                 prompt:
                   type: string
                   description: The user's natural language memory question (e.g. "What did I say about Mimi last week?")
+                  example: What did I say about Mimi last week?
                 date:
                   type: string
                   description: Optional date or time range (e.g. "yesterday", "last week", or ISO date)
+                  example: last week
                 timezone:
                   type: string
                   description: Optional timezone (e.g. "Australia/Melbourne")
+                  example: Australia/Melbourne
+                isStarred:
+                  type: boolean
+                  description: Filter for starred lifelogs
+                  example: false
+                limit:
+                  type: integer
+                  description: Max number of lifelogs to fetch
+                  example: 10
               required:
                 - prompt
       responses:
@@ -42,6 +66,11 @@ paths:
                   result:
                     type: string
                     description: The GPT-generated summary of relevant lifelogs
+              examples:
+                summary:
+                  value:
+                    result: |
+                      Mimi was mentioned in two meetings last week. In the Monday meeting, you discussed project updates with Mimi. In the Thursday meeting, you referenced Mimi's feedback on the new design.
   /search:
     post:
       summary: Search lifelogs
@@ -57,6 +86,7 @@ paths:
                 query:
                   type: string
                   description: Search query string
+                  example: meeting
               required:
                 - query
       responses:
@@ -71,6 +101,18 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/LifelogSummary'
+              examples:
+                search:
+                  value:
+                    results:
+                      - id: "abc123"
+                        title: "Monday Meeting"
+                        text: "Discussed project updates with Mimi."
+                        url: "https://app.limitless.ai/lifelogs/abc123"
+                      - id: "def456"
+                        title: "Thursday Review"
+                        text: "Reviewed feedback from Mimi."
+                        url: "https://app.limitless.ai/lifelogs/def456"
   /fetch:
     post:
       summary: Fetch lifelog by ID
@@ -86,6 +128,7 @@ paths:
                 id:
                   type: string
                   description: Lifelog ID
+                  example: abc123
               required:
                 - id
       responses:
@@ -95,6 +138,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Lifelog'
+              examples:
+                lifelog:
+                  value:
+                    id: "abc123"
+                    title: "Monday Meeting"
+                    markdown: "# Monday Meeting\nDiscussed project updates with Mimi."
+                    startTime: "2025-06-23T09:00:00+10:00"
+                    endTime: "2025-06-23T10:00:00+10:00"
+                    updatedAt: "2025-06-23T10:05:00+10:00"
 components:
   schemas:
     LifelogSummary:
