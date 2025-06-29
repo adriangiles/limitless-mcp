@@ -51,6 +51,11 @@ function splitMarkdownIntoChunks(markdown: string, maxChars: number = 12000): st
   return chunks;
 }
 
+// --- Utility: sleep for ms ---
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // POST /memory endpoint for conversational memory queries
 app.post('/memory', async (req, res) => {
   try {
@@ -136,7 +141,7 @@ app.post('/memory', async (req, res) => {
       return res.json({ result: 'No usable memory content for summarisation.' });
     }
 
-    // 6. Summarise each chunk with OpenAI
+    // 6. Summarise each chunk with OpenAI, handling rate limits
     const partialSummaries: string[] = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -145,22 +150,44 @@ app.post('/memory', async (req, res) => {
         `Summarise the following lifelog entries for the user.\n\n` +
         chunk +
         `\n\nUser question: ${prompt}\n\nInstructions:\n- Return a summary in bullet points\n- List key discussion topics\n- Highlight any decisions or action items\n- Optionally, note the emotional tone if relevant\n- Be clear, concise, and helpful`;
-      try {
-        console.log(`[MEMORY] Sending chunk ${i+1}/${chunks.length} to OpenAI (${chunk.length} chars)`);
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          max_tokens: 800
-        });
-        const partial = completion.choices[0]?.message?.content?.trim();
-        if (partial) partialSummaries.push(partial);
-        else console.warn(`[MEMORY] Empty summary for chunk ${i+1}`);
-      } catch (err) {
-        console.error(`[MEMORY] Failed to summarise chunk ${i+1}:`, err);
-        // fallback: skip this chunk
+      let retries = 0;
+      let maxRetries = 3;
+      let success = false;
+      let partial = '';
+      while (!success && retries <= maxRetries) {
+        try {
+          if (i > 0) await sleep(1000); // 1s delay between chunks
+          console.log(`[MEMORY] Sending chunk ${i+1}/${chunks.length} to OpenAI (${chunk.length} chars)`);
+          const completion = await openai.chat.completions.create({
+            model: 'gpt-4',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ],
+            max_tokens: 800
+          });
+          partial = completion.choices[0]?.message?.content?.trim() || '';
+          if (partial) partialSummaries.push(partial);
+          else console.warn(`[MEMORY] Empty summary for chunk ${i+1}`);
+          success = true;
+        } catch (err: any) {
+          if (err.status === 429) {
+            let retryAfter = 10000; // default 10s
+            if (err.response && err.response.headers && err.response.headers['retry-after']) {
+              const ra = err.response.headers['retry-after'];
+              if (!isNaN(Number(ra))) retryAfter = Number(ra) * (Number(ra) < 1000 ? 1000 : 1);
+            }
+            retries++;
+            console.warn(`[MEMORY] Rate limited on chunk ${i+1}, retrying in ${retryAfter}ms (attempt ${retries})`);
+            await sleep(retryAfter);
+          } else {
+            console.error(`[MEMORY] Failed to summarise chunk ${i+1}:`, err);
+            break;
+          }
+        }
+      }
+      if (!success) {
+        console.error(`[MEMORY] Giving up on chunk ${i+1} after ${retries} retries.`);
       }
     }
     console.log(`[MEMORY] Got ${partialSummaries.length} partial summaries.`);
