@@ -32,6 +32,21 @@ app.use(openapiRoute);
 // Only create OpenAI client once
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// --- Chunked summarisation for GPT-4 context safety ---
+function splitMarkdownIntoChunks(markdown: string, maxChars: number = 12000): string[] {
+  const chunks: string[] = [];
+  let current = '';
+  for (const line of markdown.split('\n')) {
+    if ((current + '\n' + line).length > maxChars) {
+      if (current.trim()) chunks.push(current);
+      current = '';
+    }
+    current += (current ? '\n' : '') + line;
+  }
+  if (current.trim()) chunks.push(current);
+  return chunks;
+}
+
 // POST /memory endpoint for conversational memory queries
 app.post('/memory', async (req, res) => {
   try {
@@ -106,54 +121,73 @@ app.post('/memory', async (req, res) => {
       return res.json({ result: `No memory available for that time range or topic.\n(Time range used: ${start} to ${end} in ${timezone})` });
     }
 
-    // 5. If logs are found, concatenate markdowns and pass them to OpenAI with a clear summarisation prompt
-    const maxLifelogsForPrompt = 10;
+    // 5. If logs are found, concatenate markdowns and split into safe chunks
+    const maxLifelogsForPrompt = 50; // allow more logs for chunking
     const logsForPrompt = lifelogs.slice(0, maxLifelogsForPrompt);
     const combinedMarkdown = logsForPrompt.map((log: any) => log.markdown || '').join('\n---\n');
-    const userPrompt =
-      `Here are your lifelog entries for the requested time range. Please summarise them for the user.\n\n` +
-      `${combinedMarkdown}\n\n` +
-      `User question: ${prompt}\n\n` +
-      `Instructions:\n` +
-      `- Return a summary in bullet points\n` +
-      `- List key discussion topics\n` +
-      `- Highlight any decisions or action items\n` +
-      `- Optionally, note the emotional tone if relevant\n` +
-      `- Be clear, concise, and helpful\n`;
-
-    // 6. Log the number of lifelogs, characters/tokens, and prompt preview
-    console.log(`[MEMORY] Preparing summary for ${lifelogs.length} lifelogs, ${combinedMarkdown.length} chars`);
-    console.log('[MEMORY] OpenAI prompt preview:', userPrompt.slice(0, 500));
-
-    // 7. Call OpenAI to generate the summary
-    const systemPrompt =
-      'You are a helpful memory assistant. Given a set of lifelog entries and a user question, provide a clear, concise, and conversational summary of the most relevant information. Include bullet points, key topics, decisions, and emotional tone if relevant.';
-    let summary = '';
-    try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        max_tokens: 400
-      });
-      summary = completion.choices[0]?.message?.content?.trim() || '';
-    } catch (aiErr) {
-      console.error('[MEMORY] OpenAI summarisation failed:', aiErr);
-      let details = '';
-      if (aiErr instanceof Error) {
-        details = aiErr.message;
-      } else if (typeof aiErr === 'object' && aiErr && 'message' in aiErr) {
-        details = (aiErr as any).message;
-      } else {
-        details = String(aiErr);
-      }
-      return res.status(502).json({ error: 'Failed to generate summary', details });
+    const chunkSize = 12000; // ~3000 tokens
+    const chunks = splitMarkdownIntoChunks(combinedMarkdown, chunkSize);
+    console.log(`[MEMORY] Splitting logs into ${chunks.length} chunk(s) of up to ${chunkSize} chars each.`);
+    if (!chunks.length) {
+      return res.json({ result: 'No usable memory content for summarisation.' });
     }
 
-    // 8. Return the summary as { result }
-    res.json({ result: summary });
+    // 6. Summarise each chunk with OpenAI
+    const partialSummaries: string[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      if (!chunk.trim()) continue;
+      const userPrompt =
+        `Summarise the following lifelog entries for the user.\n\n` +
+        chunk +
+        `\n\nUser question: ${prompt}\n\nInstructions:\n- Return a summary in bullet points\n- List key discussion topics\n- Highlight any decisions or action items\n- Optionally, note the emotional tone if relevant\n- Be clear, concise, and helpful`;
+      const systemPrompt =
+        'You are a helpful memory assistant. Given a set of lifelog entries and a user question, provide a clear, concise, and conversational summary of the most relevant information.';
+      try {
+        console.log(`[MEMORY] Sending chunk ${i+1}/${chunks.length} to OpenAI (${chunk.length} chars)`);
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          max_tokens: 800
+        });
+        const partial = completion.choices[0]?.message?.content?.trim();
+        if (partial) partialSummaries.push(partial);
+        else console.warn(`[MEMORY] Empty summary for chunk ${i+1}`);
+      } catch (err) {
+        console.error(`[MEMORY] Failed to summarise chunk ${i+1}:`, err);
+        // fallback: skip this chunk
+      }
+    }
+    console.log(`[MEMORY] Got ${partialSummaries.length} partial summaries.`);
+    if (!partialSummaries.length) {
+      return res.json({ result: 'No summary could be generated from the memory content.' });
+    }
+
+    // 7. Final summary from partials
+    const finalPrompt =
+      `Combine the following partial summaries into a single, concise summary for the user.\n\n` +
+      partialSummaries.map((s, i) => `Summary part ${i+1}:\n${s}`).join('\n\n') +
+      `\n\nInstructions:\n- Return a summary in bullet points\n- List key discussion topics\n- Highlight any decisions or action items\n- Optionally, note the emotional tone if relevant\n- Be clear, concise, and helpful`;
+    try {
+      console.log(`[MEMORY] Sending ${partialSummaries.length} partials to OpenAI for final summary.`);
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: finalPrompt }
+        ],
+        max_tokens: 600
+      });
+      const finalSummary = completion.choices[0]?.message?.content?.trim() || '';
+      console.log(`[MEMORY] Final summary length: ${finalSummary.length} chars`);
+      return res.json({ result: finalSummary });
+    } catch (err) {
+      console.error('[MEMORY] Final summary failed:', err);
+      return res.json({ result: partialSummaries.join('\n\n') });
+    }
   } catch (err) {
     console.error('Error in /memory:', err);
     res.status(500).json({ error: 'Internal server error' });
