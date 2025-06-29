@@ -160,9 +160,51 @@ app.post('/memory', async (req, res) => {
   }
 });
 
+// --- Lifelog sync on startup ---
+async function syncLifelogs() {
+  const apiKey = process.env.LIMITLESS_API_KEY || '';
+  if (!apiKey) {
+    console.warn('[SYNC] LIMITLESS_API_KEY not set, skipping lifelog sync.');
+    return;
+  }
+  try {
+    const lifelogs = await getLifelogs({ apiKey, limit: null });
+    const stmt = db.prepare(`
+      INSERT INTO lifelogs (id, title, markdown, startTime, endTime, updatedAt)
+      VALUES (@id, @title, @markdown, @startTime, @endTime, @updatedAt)
+      ON CONFLICT(id) DO UPDATE SET
+        title=excluded.title,
+        markdown=excluded.markdown,
+        startTime=excluded.startTime,
+        endTime=excluded.endTime,
+        updatedAt=excluded.updatedAt;
+    `);
+    let count = 0;
+    for (const log of lifelogs) {
+      stmt.run({
+        id: log.id,
+        title: log.title,
+        markdown: log.markdown,
+        startTime: log.startTime,
+        endTime: log.endTime,
+        updatedAt: log.updatedAt
+      });
+      count++;
+    }
+    console.log(`[SYNC] Synced ${count} lifelogs from Limitless API to SQLite.`);
+  } catch (err) {
+    console.error('[SYNC] Failed to sync lifelogs:', err);
+  }
+}
 
+// Call syncLifelogs on server startup
+syncLifelogs();
 
-
+// Optional: /refresh route to trigger sync manually
+app.post('/refresh', async (req, res) => {
+  await syncLifelogs();
+  res.json({ result: 'Lifelogs refreshed from Limitless API.' });
+});
 
 
 
