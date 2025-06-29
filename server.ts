@@ -32,6 +32,10 @@ app.use(openapiRoute);
 // Only create OpenAI client once
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// System prompt for all OpenAI summarisation calls
+const systemPrompt =
+  'You are a helpful memory assistant. Given a set of lifelog entries and a user question, provide a clear, concise, and conversational summary of the most relevant information.';
+
 // --- Chunked summarisation for GPT-4 context safety ---
 function splitMarkdownIntoChunks(markdown: string, maxChars: number = 12000): string[] {
   const chunks: string[] = [];
@@ -141,8 +145,6 @@ app.post('/memory', async (req, res) => {
         `Summarise the following lifelog entries for the user.\n\n` +
         chunk +
         `\n\nUser question: ${prompt}\n\nInstructions:\n- Return a summary in bullet points\n- List key discussion topics\n- Highlight any decisions or action items\n- Optionally, note the emotional tone if relevant\n- Be clear, concise, and helpful`;
-      const systemPrompt =
-        'You are a helpful memory assistant. Given a set of lifelog entries and a user question, provide a clear, concise, and conversational summary of the most relevant information.';
       try {
         console.log(`[MEMORY] Sending chunk ${i+1}/${chunks.length} to OpenAI (${chunk.length} chars)`);
         const completion = await openai.chat.completions.create({
