@@ -32,9 +32,18 @@ app.use(openapiRoute);
 // Only create OpenAI client once
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// System prompt for all OpenAI summarisation calls
-const systemPrompt =
-  'You are a helpful memory assistant. Given a set of lifelog entries and a user question, provide a clear, concise, and conversational summary of the most relevant information.';
+// Improved system prompt for OpenAI summarisation calls
+// This prompt instructs the model to act as an executive assistant, structure output, and focus on meetings, topics, actions, and tone.
+const systemPrompt = `
+You are an executive assistant helping summarize a user's lifelog entries. Your job is to produce a concise, well-organized, and readable summary for the user, focusing on meetings, key conversations, decisions, and action items. 
+
+Always structure your summary with:
+- **Section headings** for each meeting or conversation (include names, titles, or times if available)
+- **Bullet points** for topics discussed, decisions made, and action items (with responsible people if known)
+- **Emotional tone** or points of tension, if present
+
+Keep the tone friendly, professional, and easy to scan. Avoid unnecessary repetition. If multiple meetings are present, use clear section headings for each. Be as specific as possible with names, times, and responsibilities.
+`;
 
 // --- Chunked summarisation for GPT-4 context safety ---
 function splitMarkdownIntoChunks(markdown: string, maxChars: number = 12000): string[] {
@@ -141,15 +150,32 @@ app.post('/memory', async (req, res) => {
       return res.json({ result: 'No usable memory content for summarisation.' });
     }
 
+
     // 6. Summarise each chunk with OpenAI, handling rate limits
+    // The userPrompt is now more structured and instructs the model to use headings, bullets, and highlight key details.
     const partialSummaries: string[] = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       if (!chunk.trim()) continue;
-      const userPrompt =
-        `Summarise the following lifelog entries for the user.\n\n` +
-        chunk +
-        `\n\nUser question: ${prompt}\n\nInstructions:\n- Return a summary in bullet points\n- List key discussion topics\n- Highlight any decisions or action items\n- Optionally, note the emotional tone if relevant\n- Be clear, concise, and helpful`;
+      // Improved user prompt for chunk summarisation
+      const userPrompt = `
+Please summarize the following lifelog entries for the user. Structure your summary as follows:
+
+1. For each meeting or key conversation, use a clear section heading (include names, titles, or times if available).
+2. Under each heading, use bullet points for:
+   - Topics discussed
+   - Decisions made
+   - Action items (with who is responsible, if known)
+   - Emotional tone or points of tension
+
+Be concise, friendly, and professional. If multiple meetings are present, use a separate heading for each. Avoid repetition. Make the summary easy to scan for an executive.
+
+---
+Lifelog entries:
+${chunk}
+
+User question: ${prompt}
+`;
       let retries = 0;
       let maxRetries = 3;
       let success = false;
@@ -196,10 +222,21 @@ app.post('/memory', async (req, res) => {
     }
 
     // 7. Final summary from partials
-    const finalPrompt =
-      `Combine the following partial summaries into a single, concise summary for the user.\n\n` +
-      partialSummaries.map((s, i) => `Summary part ${i+1}:\n${s}`).join('\n\n') +
-      `\n\nInstructions:\n- Return a summary in bullet points\n- List key discussion topics\n- Highlight any decisions or action items\n- Optionally, note the emotional tone if relevant\n- Be clear, concise, and helpful`;
+    // The finalPrompt now instructs the model to merge chunk summaries with clear structure and headings.
+    const finalPrompt = `
+You are an executive assistant. Merge the following partial summaries into a single, well-organized summary for the user. 
+
+Instructions:
+- Use a section heading for each meeting or conversation (include names/times if available)
+- Under each heading, use bullet points for topics, decisions, action items (with responsible people), and emotional tone
+- Be concise, friendly, and professional
+- Avoid repetition and make the summary easy to scan
+
+---
+Partial summaries:
+${partialSummaries.map((s, i) => `Summary part ${i+1}:
+${s}`).join('\n\n')}
+`;
     try {
       console.log(`[MEMORY] Sending ${partialSummaries.length} partials to OpenAI for final summary.`);
       const completion = await openai.chat.completions.create({
