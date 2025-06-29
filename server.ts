@@ -1,4 +1,3 @@
-
 import express from 'express';
 import bodyParser from 'body-parser';
 import db from './db';
@@ -136,7 +135,15 @@ app.post('/memory', async (req, res) => {
     }
 
 
-    // 3. Print the number of logs and the summary input text
+    // 3. Fallback if no memory found
+    // For logging
+    let logDateRange = { start, end };
+    if (!lifelogs.length) {
+      console.log(`[MEMORY] No lifelogs found for range:`, logDateRange);
+      return res.json({ result: `No memory available for that time range or topic.\n(Time range used: ${start} to ${end} in ${timezone})` });
+    }
+
+    // 4. Print the number of logs and the summary input text
     // Enrich prompt with tags, starred, and support for pagination (showing only the first N if too many)
     const maxLifelogsForPrompt = 10;
     let lifelogText = lifelogs.slice(0, maxLifelogsForPrompt).map((log: any) => {
@@ -154,7 +161,7 @@ app.post('/memory', async (req, res) => {
       lifelogText += `\n\n(Note: Only the first ${maxLifelogsForPrompt} of ${lifelogs.length} lifelogs are shown here.)`;
     }
 
-    // 4. Build a strong OpenAI prompt for high-quality summaries
+    // 5. Build a strong OpenAI prompt for high-quality summaries
     const userPrompt =
       `You are a memory assistant. Summarize the following lifelog conversations for the user:\n\n` +
       `${lifelogText}\n\n` +
@@ -166,11 +173,11 @@ app.post('/memory', async (req, res) => {
       `- Optionally, note the emotional tone if relevant\n` +
       `- Be clear, concise, and helpful\n`;
 
-    // 5. Log the number of lifelogs, characters/tokens, and prompt preview
+    // 6. Log the number of lifelogs, characters/tokens, and prompt preview
     console.log(`[MEMORY] Preparing summary for ${lifelogs.length} lifelogs, ${lifelogText.length} chars`);
     console.log('[MEMORY] OpenAI prompt preview:', userPrompt.slice(0, 500));
 
-    // 6. Call OpenAI to generate the summary
+    // 7. Call OpenAI to generate the summary
     const systemPrompt =
       'You are a helpful memory assistant. Given a set of lifelog entries and a user question, provide a clear, concise, and conversational summary of the most relevant information.';
     let summary = '';
@@ -197,7 +204,7 @@ app.post('/memory', async (req, res) => {
       return res.status(502).json({ error: 'Failed to generate summary', details });
     }
 
-    // 7. Return the summary as { result }
+    // 8. Return the summary as { result }
     res.json({ result: summary });
   } catch (err) {
     console.error('Error in /memory:', err);
